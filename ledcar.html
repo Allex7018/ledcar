@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0b0d12">
+<meta name="mobile-web-app-capable" content="yes">
+<title>LED Mașină</title>
+<style>
+  :root { --bg:#0b0d12; --card:#151922; --line:#232a36; --txt:#e8ecf3; --mut:#8b95a7; --acc:#4f8cff; --ok:#2ecc71; --bad:#ff5c5c; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:14px; padding-bottom:40px; }
+  h1 { font-size:20px; margin:4px 0 12px; display:flex; align-items:center; gap:10px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--bad); flex:none; }
+  .dot.on { background:var(--ok); box-shadow:0 0 10px var(--ok); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 10px; font-weight:600; }
+  button { background:#222938; color:var(--txt); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:15px; font-weight:600; cursor:pointer; }
+  button:active { transform:scale(.97); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button.big { width:100%; padding:16px; font-size:17px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row > button { flex:1; }
+  .status { color:var(--mut); font-size:14px; margin-top:8px; min-height:20px; }
+  input[type=range] { width:100%; accent-color:var(--acc); height:28px; }
+  .lbl { display:flex; justify-content:space-between; color:var(--mut); font-size:14px; margin-top:6px; }
+  .swatches { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+  .sw { aspect-ratio:1; border-radius:12px; border:2px solid transparent; padding:0; }
+  .sw.sel { border-color:#fff; }
+  #wheel { width:100%; max-width:300px; aspect-ratio:1; display:block; margin:6px auto 10px; touch-action:none; border-radius:50%; }
+  .fx { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; max-height:260px; overflow:auto; }
+  .fx button { padding:10px 4px; font-size:14px; }
+  .fx button.sel { background:var(--acc); border-color:var(--acc); }
+  select, input[type=text] { width:100%; background:#0f131a; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font-size:15px; }
+  #log { font:12px/1.4 ui-monospace,monospace; color:var(--mut); white-space:pre-wrap; max-height:160px; overflow:auto; margin-top:8px; }
+  .muted { color:var(--mut); font-size:13px; }
+  details summary { cursor:pointer; color:var(--mut); font-size:14px; }
+  #musicBar { height:8px; background:#0f131a; border-radius:4px; overflow:hidden; margin-top:10px; }
+  #musicBar div { height:100%; width:0; background:var(--acc); transition:width .05s; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+
+<h1><span class="dot" id="dot"></span> LED Mașină</h1>
+
+<div class="card">
+  <button class="primary big" id="btnConnect">Conectare</button>
+  <div class="row" style="margin-top:8px">
+    <button id="btnOn">Pornit</button>
+    <button id="btnOff">Oprit</button>
+  </div>
+  <div class="status" id="status">Neconectat</div>
+</div>
+
+<div class="card">
+  <h2>Culoare</h2>
+  <canvas id="wheel" width="600" height="600"></canvas>
+  <div class="swatches" id="swatches"></div>
+  <div class="row" style="margin-top:10px">
+    <button id="btnFav">★ Salvează culoarea</button>
+  </div>
+  <div class="swatches" id="favs" style="margin-top:8px"></div>
+</div>
+
+<div class="card">
+  <h2>Luminozitate</h2>
+  <input type="range" id="bright" min="1" max="100" value="100">
+  <div class="lbl"><span>Slab</span><span id="brightVal">100%</span></div>
+</div>
+
+<div class="card">
+  <h2>Efecte</h2>
+  <div class="fx" id="fx"></div>
+  <div class="lbl" style="margin-top:12px"><span>Viteză</span><span id="speedVal">50</span></div>
+  <input type="range" id="speed" min="0" max="100" value="50">
+</div>
+
+<div class="card">
+  <h2>Muzică (microfonul telefonului)</h2>
+  <div class="row">
+    <button id="btnMusic">▶ Pornește modul muzică</button>
+  </div>
+  <div class="lbl"><span>Sensibilitate</span><span id="sensVal">60</span></div>
+  <input type="range" id="sens" min="10" max="100" value="60">
+  <div id="musicBar"><div></div></div>
+</div>
+
+<div class="card">
+  <details id="adv">
+    <summary>Setări avansate / depanare</summary>
+    <div style="margin-top:10px">
+      <div class="muted">Protocol (dacă „Test” nu face banda roșie, încearcă celălalt):</div>
+      <select id="proto" style="margin-top:6px">
+        <option value="A">A — 7B … BF (LEDCAR / LEDDMX)</option>
+        <option value="B">B — 7E FF … EF (LEDBLE)</option>
+      </select>
+      <div class="row" style="margin-top:8px">
+        <button id="btnTestA">Test A (roșu)</button>
+        <button id="btnTestB">Test B (roșu)</button>
+      </div>
+      <div class="muted" style="margin-top:12px">Trimite comandă manuală (hex):</div>
+      <input type="text" id="raw" placeholder="7B FF 07 FF 00 00 FF FF BF" style="margin-top:6px">
+      <div class="row" style="margin-top:8px">
+        <button id="btnRaw">Trimite</button>
+        <button id="btnAll">Conectare (toate dispozitivele)</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </details>
+</div>
+
+<script>
+(() => {
+  // ---------- storage ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('ledcar_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('ledcar_' + k, JSON.stringify(v)); } catch {} }
+  };
+
+  const $ = id => document.getElementById(id);
+  const logEl = $('log');
+  const log = (m) => { const t = new Date().toLocaleTimeString(); logEl.textContent = `[${t}] ${m}\n` + logEl.textContent.slice(0, 4000); };
+  const setStatus = (m) => { $('status').textContent = m; };
+  const hex = b => [...b].map(x => x.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+
+  // ---------- protocol ----------
+  let proto = store.get('proto', 'A');
+  $('proto').value = proto;
+  $('proto').onchange = e => { proto = e.target.value; store.set('proto', proto); buildFx(); log('Protocol: ' + proto); };
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v | 0));
+  const P = {
+    A: { // 7B ... BF  (LEDCAR / LEDDMX / LEDBLE in LED LAMP)
+      power: on => [0x7B, 0x04, 0x04, on ? 1 : 0, 0xFF, 0xFF, 0xFF, 0xFF, 0xBF],
+      color: (r, g, b) => [0x7B, 0xFF, 0x07, r, g, b, 0xFF, 0xFF, 0xBF],
+      bright: v => [0x7B, 0x01, clamp(v, 0, 100), 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xBF],
+      mode: m => [0x7B, 0xFF, 0x13, m, 0xFF, 0xFF, 0xFF, 0xFF, 0xBF],
+      speed: s => [0x7B, 0x02, clamp(s, 0, 100), 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xBF],
+      modes: Array.from({ length: 40 }, (_, i) => i + 1)
+    },
+    B: { // 7E FF ... EF  (LEDBLE-01)
+      power: on => [0x7E, 0xFF, 0x04, on ? 1 : 0, 0xFF, 0xFF, 0xFF, 0xFF, 0xEF],
+      color: (r, g, b) => [0x7E, 0xFF, 0x05, 0x03, r, g, b, 0xFF, 0xEF],
+      bright: v => [0x7E, 0xFF, 0x01, clamp(v, 0, 100), 0x00, 0xFF, 0xFF, 0xFF, 0xEF],
+      mode: m => [0x7E, 0xFF, 0x03, m, 0x03, 0xFF, 0xFF, 0xFF, 0xEF],
+      speed: s => [0x7E, 0xFF, 0x02, clamp(s, 0, 100), 0x00, 0xFF, 0xFF, 0xFF, 0xEF],
+      modes: Array.from({ length: 0x9D - 0x87 + 1 }, (_, i) => 0x87 + i)
+    }
+  };
+
+  // ---------- BLE ----------
+  const SERVICES = [0xffe0, 0xfff0, 0xffd0, 0xffd5, 0xffb0, 0xfee7, 0xae00, 0x1910,
+    '0000ffe5-0000-1000-8000-00805f9b34fb', '0000ff00-0000-1000-8000-00805f9b34fb'];
+  const PREFERRED = [[0xffe0, 0xffe1], [0xfff0, 0xfff3], [0xffd5, 0xffd9], [0xffe5, 0xffe9], [0xae00, 0xae01]];
+  let device = null, chr = null, manualDisconnect = false, reconnectTries = 0;
+
+  async function pickCharacteristic(server) {
+    for (const [s, c] of PREFERRED) {
+      try { const svc = await server.getPrimaryService(s); const ch = await svc.getCharacteristic(c); log(`Folosesc ${s.toString(16)}/${c.toString(16)}`); return ch; } catch {}
+    }
+    const svcs = await server.getPrimaryServices();
+    for (const svc of svcs) {
+      for (const ch of await svc.getCharacteristics()) {
+        if (ch.properties.writeWithoutResponse || ch.properties.write) { log('Folosesc ' + svc.uuid + ' / ' + ch.uuid); return ch; }
+      }
+    }
+    throw new Error('Nu am găsit caracteristică de scriere');
+  }
+
+  async function connectTo(dev) {
+    device = dev;
+    device.removeEventListener('gattserverdisconnected', onDisc);
+    device.addEventListener('gattserverdisconnected', onDisc);
+    setStatus('Mă conectez la ' + (device.name || 'dispozitiv') + '…');
+    let lastErr;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const server = await device.gatt.connect();
+        chr = await pickCharacteristic(server);
+        reconnectTries = 0;
+        setConnected(true);
+        if (!store.get('protoChosen', false) && /^LEDBLE/i.test(device.name || '')) { /* keep user choice otherwise */ }
+        return;
+      } catch (e) { lastErr = e; log('Încercare ' + (i + 1) + ' eșuată: ' + e.message); await sleep(600); }
+    }
+    setConnected(false);
+    setStatus('Nu s-a putut conecta: ' + (lastErr && lastErr.message));
+  }
+
+  async function onDisc() {
+    chr = null; setConnected(false);
+    if (manualDisconnect) return;
+    if (reconnectTries++ < 5) { setStatus('Conexiune pierdută, reconectez…'); await sleep(1000); connectTo(device); }
+    else setStatus('Deconectat. Apasă Conectare.');
+  }
+
+  async function requestDevice(all) {
+    if (!navigator.bluetooth) { setStatus('Browserul nu suportă Bluetooth. Folosește Chrome pe Android, pe o adresă https.'); return; }
+    try {
+      manualDisconnect = false;
+      const opts = all
+        ? { acceptAllDevices: true, optionalServices: SERVICES }
+        : { filters: [{ namePrefix: 'LED' }, { namePrefix: 'ELK' }, { namePrefix: 'Triones' }, { namePrefix: 'QHM' }], optionalServices: SERVICES };
+      const dev = await navigator.bluetooth.requestDevice(opts);
+      await connectTo(dev);
+    } catch (e) { if (e.name !== 'NotFoundError') setStatus('Eroare: ' + e.message); else setStatus('Niciun dispozitiv ales'); }
+  }
+
+  // Try auto-reconnect to a previously allowed device (works where Chrome supports getDevices)
+  async function autoReconnect() {
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+    try {
+      const devs = await navigator.bluetooth.getDevices();
+      if (!devs.length) return;
+      const dev = devs[0];
+      setStatus('Caut ' + (dev.name || 'banda') + '…');
+      if (dev.watchAdvertisements) {
+        const ac = new AbortController();
+        dev.addEventListener('advertisementreceived', () => { ac.abort(); connectTo(dev); }, { once: true });
+        try { await dev.watchAdvertisements({ signal: ac.signal }); } catch { connectTo(dev); }
+        setTimeout(() => { if (!chr) { ac.abort(); setStatus('Neconectat — apasă Conectare'); } }, 15000);
+      } else connectTo(dev);
+    } catch (e) { log('Auto: ' + e.message); }
+  }
+
+  function setConnected(on) {
+    $('dot').classList.toggle('on', on);
+    $('btnConnect').textContent = on ? 'Deconectare' : 'Conectare';
+    if (on) setStatus('Conectat la ' + (device && device.name || 'dispozitiv'));
+  }
+
+  // write queue: one write at a time; for "latest-wins" keys we keep only the newest
+  const queue = []; let busy = false;
+  function send(bytes, key) {
+    if (key) { const i = queue.findIndex(q => q.key === key); if (i >= 0) queue.splice(i, 1); }
+    queue.push({ bytes: new Uint8Array(bytes), key });
+    pump();
+  }
+  async function pump() {
+    if (busy) return; busy = true;
+    while (queue.length) {
+      const { bytes } = queue.shift();
+      if (!chr) { queue.length = 0; break; }
+      try {
+        if (chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(bytes);
+        else await chr.writeValue(bytes);
+        log('→ ' + hex(bytes));
+      } catch (e) { log('Eroare scriere: ' + e.message); }
+      await sleep(20);
+    }
+    busy = false;
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const cmd = () => P[proto];
+
+  // ---------- UI: connect / power ----------
+  $('btnConnect').onclick = async () => {
+    if (chr && device && device.gatt.connected) { manualDisconnect = true; device.gatt.disconnect(); setStatus('Deconectat'); return; }
+    requestDevice(false);
+  };
+  $('btnAll').onclick = () => requestDevice(true);
+  $('btnOn').onclick = () => send(cmd().power(true));
+  $('btnOff').onclick = () => send(cmd().power(false));
+
+  // ---------- color wheel ----------
+  const cv = $('wheel'), ctx = cv.getContext('2d');
+  (function drawWheel() {
+    const W = cv.width, R = W / 2, img = ctx.createImageData(W, W);
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const dx = x - R, dy = y - R, d = Math.sqrt(dx * dx + dy * dy);
+      const i = (y * W + x) * 4;
+      if (d > R) { img.data[i + 3] = 0; continue; }
+      const [r, g, b] = hsv2rgb((Math.atan2(dy, dx) / Math.PI * 180 + 360) % 360, d / R, 1);
+      img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  })();
+  function hsv2rgb(h, s, v) {
+    const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+    return [f(5), f(3), f(1)];
+  }
+  let lastSent = 0, current = store.get('color', [255, 0, 0]);
+  function setColor(rgb, force) {
+    current = rgb; store.set('color', rgb);
+    const now = performance.now();
+    if (force || now - lastSent > 40) { lastSent = now; send(cmd().color(...rgb), 'color'); }
+    else setTimeout(() => send(cmd().color(...current), 'color'), 45);
+    stopMusic();
+  }
+  function wheelPick(e) {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * cv.width, y = (e.clientY - r.top) / r.height * cv.height;
+    const R = cv.width / 2, dx = x - R, dy = y - R, d = Math.min(1, Math.sqrt(dx * dx + dy * dy) / R);
+    setColor(hsv2rgb((Math.atan2(dy, dx) / Math.PI * 180 + 360) % 360, d, 1));
+  }
+  let dragging = false;
+  cv.addEventListener('pointerdown', e => { dragging = true; cv.setPointerCapture(e.pointerId); wheelPick(e); });
+  cv.addEventListener('pointermove', e => { if (dragging) wheelPick(e); });
+  cv.addEventListener('pointerup', () => { dragging = false; send(cmd().color(...current), 'color'); });
+
+  const PRESETS = [[255,0,0],[255,80,0],[255,200,0],[0,255,0],[0,255,180],[0,180,255],[0,0,255],[120,0,255],[255,0,200],[255,0,80],[255,255,255],[255,180,120]];
+  function renderSwatches(el, list, removable) {
+    el.innerHTML = '';
+    list.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.className = 'sw'; b.style.background = `rgb(${c})`;
+      b.onclick = () => setColor(c, true);
+      if (removable) b.oncontextmenu = e => { e.preventDefault(); favs.splice(i, 1); store.set('favs', favs); renderSwatches($('favs'), favs, true); };
+      el.appendChild(b);
+    });
+  }
+  renderSwatches($('swatches'), PRESETS);
+  let favs = store.get('favs', []);
+  renderSwatches($('favs'), favs, true);
+  $('btnFav').onclick = () => { favs.unshift(current); favs = favs.slice(0, 12); store.set('favs', favs); renderSwatches($('favs'), favs, true); };
+
+  // ---------- brightness / speed ----------
+  const br = $('bright'); br.value = store.get('bright', 100); $('brightVal').textContent = br.value + '%';
+  br.oninput = () => { $('brightVal').textContent = br.value + '%'; store.set('bright', +br.value); send(cmd().bright(+br.value), 'bright'); };
+  const sp = $('speed'); sp.value = store.get('speed', 50); $('speedVal').textContent = sp.value;
+  sp.oninput = () => { $('speedVal').textContent = sp.value; store.set('speed', +sp.value); send(cmd().speed(+sp.value), 'speed'); };
+
+  // ---------- effects ----------
+  let curMode = null;
+  function buildFx() {
+    const el = $('fx'); el.innerHTML = '';
+    cmd().modes.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.textContent = 'Efect ' + (i + 1);
+      if (m === curMode) b.className = 'sel';
+      b.onclick = () => {
+        stopMusic(); curMode = m;
+        [...el.children].forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+        send(cmd().mode(m), 'mode');
+        send(cmd().speed(+sp.value), 'speed');
+      };
+      el.appendChild(b);
+    });
+  }
+  buildFx();
+
+  // ---------- music mode (phone mic) ----------
+  let audio = null, raf = null;
+  const sens = $('sens'); sens.value = store.get('sens', 60); $('sensVal').textContent = sens.value;
+  sens.oninput = () => { $('sensVal').textContent = sens.value; store.set('sens', +sens.value); };
+  async function startMusic() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const an = ac.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.6;
+      ac.createMediaStreamSource(stream).connect(an);
+      audio = { ac, an, stream, data: new Uint8Array(an.frequencyBinCount), hue: 0, avg: 0, last: 0 };
+      $('btnMusic').textContent = '■ Oprește modul muzică';
+      loop();
+    } catch (e) { setStatus('Nu am acces la microfon: ' + e.message); }
+  }
+  function loop() {
+    raf = requestAnimationFrame(loop);
+    const a = audio; a.an.getByteFrequencyData(a.data);
+    const n = a.data.length, bass = avg(a.data, 1, n * 0.06), mid = avg(a.data, n * 0.06, n * 0.3);
+    const level = (bass * 0.7 + mid * 0.3) / 255;
+    a.avg = a.avg * 0.95 + level * 0.05;
+    const gain = 0.5 + (+sens.value) / 40;
+    let v = Math.min(1, Math.max(0, (level - a.avg * 0.8) * gain * 3 + level * 0.3));
+    if (level > a.avg * 1.35 && level > 0.15) a.hue = (a.hue + 40) % 360; // beat -> next color
+    else a.hue = (a.hue + 0.3) % 360;
+    document.querySelector('#musicBar div').style.width = (v * 100) + '%';
+    const now = performance.now();
+    if (now - a.last > 60) { a.last = now; const rgb = hsv2rgb(a.hue, 1, Math.max(0.04, v)); send(cmd().color(...rgb), 'color'); }
+  }
+  const avg = (arr, s, e) => { s |= 0; e |= 0; let t = 0; for (let i = s; i < e; i++) t += arr[i]; return t / Math.max(1, e - s); };
+  function stopMusic() {
+    if (!audio) return;
+    cancelAnimationFrame(raf); audio.stream.getTracks().forEach(t => t.stop()); audio.ac.close(); audio = null;
+    $('btnMusic').textContent = '▶ Pornește modul muzică';
+    document.querySelector('#musicBar div').style.width = '0';
+  }
+  $('btnMusic').onclick = () => audio ? stopMusic() : startMusic();
+
+  // ---------- advanced ----------
+  $('btnTestA').onclick = () => send(P.A.color(255, 0, 0));
+  $('btnTestB').onclick = () => send(P.B.color(255, 0, 0));
+  $('btnRaw').onclick = () => {
+    const b = $('raw').value.trim().split(/[\s,]+/).filter(Boolean).map(x => parseInt(x, 16));
+    if (!b.length || b.some(isNaN)) { log('Hex invalid'); return; }
+    send(b);
+  };
+
+  autoReconnect();
+})();
+</script>
+</body>
+</html>
