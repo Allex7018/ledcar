@@ -174,18 +174,24 @@
     device.addEventListener('gattserverdisconnected', onDisc);
     setStatus('Mă conectez la ' + (device.name || 'dispozitiv') + '…');
     let lastErr;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 6; i++) {
       try {
-        const server = await device.gatt.connect();
+        if (i > 0) setStatus(`Mă conectez… încercarea ${i + 1} din 6`);
+        try { if (device.gatt.connected) device.gatt.disconnect(); } catch {}
+        const server = await withTimeout(device.gatt.connect(), 10000);
         chr = await pickCharacteristic(server);
         reconnectTries = 0;
         setConnected(true);
         if (!store.get('protoChosen', false) && /^LEDBLE/i.test(device.name || '')) { /* keep user choice otherwise */ }
         return;
-      } catch (e) { lastErr = e; log('Încercare ' + (i + 1) + ' eșuată: ' + e.message); await sleep(600); }
+      } catch (e) {
+        lastErr = e; log('Încercare ' + (i + 1) + ' eșuată: ' + e.message);
+        try { device.gatt.disconnect(); } catch {}
+        await sleep(1200 + i * 800);
+      }
     }
     setConnected(false);
-    setStatus('Nu s-a putut conecta: ' + (lastErr && lastErr.message));
+    setStatus('Nu s-a putut conecta. Închide de tot aplicația LED LAMP, oprește/pornește Bluetooth-ul și încearcă din nou. (' + (lastErr && lastErr.message) + ')');
   }
 
   async function onDisc() {
@@ -252,6 +258,7 @@
     busy = false;
   }
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
   const cmd = () => P[proto];
 
   // ---------- UI: connect / power ----------
